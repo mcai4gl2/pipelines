@@ -42,7 +42,11 @@ class YahooPipelineTest {
         // Build fake dataset spanning 40 days across two months to force chunking when monthsPerChunk=1
         List<LocalDate> days = new ArrayList<>();
         LocalDate start = LocalDate.of(2024, 1, 10);
-        for (int i = 0; i < 40; i++) days.add(start.plusDays(i));
+        LocalDate cur = start;
+        while (days.size() < 40) {
+            if (io.pipelines.financial.TradingCalendars.isUsEquityTradingDay(cur)) days.add(cur);
+            cur = cur.plusDays(1);
+        }
 
         MissingRangeSource source = new MissingRangeSource(List.of(ticker), tmp, days.get(0), days.get(days.size()-1), 1);
         MockYahooTransform transform = new MockYahooTransform(Map.of(ticker, days));
@@ -83,7 +87,11 @@ class YahooPipelineTest {
         String ticker = "TEST2";
         List<LocalDate> days = new ArrayList<>();
         LocalDate start = LocalDate.of(2024, 3, 1);
-        for (int i = 0; i < 20; i++) days.add(start.plusDays(i));
+        LocalDate cur = start;
+        while (days.size() < 20) {
+            if (io.pipelines.financial.TradingCalendars.isUsEquityTradingDay(cur)) days.add(cur);
+            cur = cur.plusDays(1);
+        }
 
         // Pre-create file with first 5 rows
         Path out = tmp.resolve(ticker + ".csv");

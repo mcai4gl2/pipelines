@@ -38,6 +38,9 @@ public final class YahooFinanceCsvMain implements Callable<Integer> {
     @CommandLine.Option(names = {"-e", "--end"}, description = "End date (yyyy-MM-dd); default today")
     LocalDate endDate;
 
+    @CommandLine.Option(names = {"--enable-pre-file-backfill"}, description = "Plan windows earlier than the earliest date present in existing CSVs (default: disabled)")
+    boolean enablePreFileBackfill = false;
+
     public static void main(String[] args) {
         int code = new CommandLine(new YahooFinanceCsvMain()).execute(args);
         System.exit(code);
@@ -51,7 +54,13 @@ public final class YahooFinanceCsvMain implements Callable<Integer> {
             return 2;
         }
 
-        MissingRangeSource source = new MissingRangeSource(tickers, Path.of(outDir), startDate, endDate, Math.max(1, chunkMonths));
+        MissingRangeSource source = new MissingRangeSource(
+                tickers,
+                Path.of(outDir),
+                startDate,
+                endDate,
+                Math.max(1, chunkMonths),
+                /* disablePreFileBackfill= */ !enablePreFileBackfill);
         MetricRegistry registry = new MetricRegistry();
         YahooDailyCsvTransform transform = new YahooDailyCsvTransform(new HttpYahooClient(), "1d", registry);
         Sink<FinancialCsv> sink = new FinancialCsvSink(Path.of(outDir));
@@ -91,6 +100,7 @@ public final class YahooFinanceCsvMain implements Callable<Integer> {
 
         // One last metrics print and per-ticker summary
         printOnce(registry, pipeline);
+        printYahooOnce(registry);
 
         java.util.Map<String,Integer> before = source.initialCounts();
         java.util.Map<String,Integer> after = new java.util.HashMap<>();
@@ -122,10 +132,12 @@ public final class YahooFinanceCsvMain implements Callable<Integer> {
     private static void printMetricsEvery(MetricRegistry r, Pipeline<?, ?> p, long millis) {
         while (p.isRunning()) {
             printOnce(r, p);
+            printYahooOnce(r);
             try { Thread.sleep(millis); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
         }
         // final
         printOnce(r, p);
+        printYahooOnce(r);
     }
 
     private static void printOnce(MetricRegistry r, Pipeline<?, ?> p) {
@@ -158,4 +170,15 @@ public final class YahooFinanceCsvMain implements Callable<Integer> {
 
     private static String fmt(double v) { return String.format("%.3f", v); }
     private static String nsToMs(double nanos) { return String.format("%.3f", nanos / 1_000_000.0); }
+
+    private static void printYahooOnce(MetricRegistry r) {
+        long windows = r.counter("yahoo.fetch.windows").getCount();
+        long failures = r.counter("yahoo.fetch.failures").getCount();
+        long zero = r.counter("yahoo.fetch.zeroRows").getCount();
+        long chunks = r.counter("yahoo.chunks.appended").getCount();
+        long rows = r.counter("yahoo.rows.appended").getCount();
+        String now = Instant.now().toString();
+        System.out.println("[" + now + "] yahoo: windows=" + windows + " failures=" + failures + " zeroRows=" + zero +
+                " chunks=" + chunks + " rows=" + rows);
+    }
 }

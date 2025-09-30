@@ -24,10 +24,17 @@ public class MissingRangeSource implements Source<RangeRequest> {
     private final Map<String, Integer> windowCounts = new HashMap<>();
 
     public MissingRangeSource(List<String> tickers, Path outDir) {
-        this(tickers, outDir, LocalDate.of(1970,1,1), LocalDate.now(ZoneOffset.UTC), 6);
+        this(tickers, outDir, LocalDate.of(1970,1,1), LocalDate.now(ZoneOffset.UTC), 6, true);
     }
 
     public MissingRangeSource(List<String> tickers, Path outDir, LocalDate startBound, LocalDate endBound, int monthsPerChunk) {
+        this(tickers, outDir, startBound, endBound, monthsPerChunk, true);
+    }
+
+    /**
+     * @param disablePreFileBackfill when true, do not plan ranges earlier than the earliest date already present in the file
+     */
+    public MissingRangeSource(List<String> tickers, Path outDir, LocalDate startBound, LocalDate endBound, int monthsPerChunk, boolean disablePreFileBackfill) {
         this.plan = new ArrayList<>();
         for (String t : tickers) {
             Set<LocalDate> existing = readExisting(outDir.resolve(t + ".csv"));
@@ -35,8 +42,15 @@ public class MissingRangeSource implements Source<RangeRequest> {
             boolean isFx = t != null && t.contains("=X");
             LocalDate today = LocalDate.now(ZoneOffset.UTC);
             LocalDate effectiveEnd = endBound.isAfter(today.minusDays(1)) ? today.minusDays(1) : endBound;
+            // If requested, avoid planning windows earlier than existing data. Default: plan only after the latest existing date.
+            LocalDate effectiveStart = startBound;
+            if (disablePreFileBackfill && !existing.isEmpty()) {
+                LocalDate maxExisting = existing.stream().max(LocalDate::compareTo).get();
+                LocalDate nextDay = maxExisting.plusDays(1);
+                if (nextDay.isAfter(effectiveStart)) effectiveStart = nextDay;
+            }
             java.util.function.Predicate<LocalDate> isTradingDay = isFx ? TradingCalendars::isWeekday : TradingCalendars::isUsEquityTradingDay;
-            List<Range> missing = computeMissingRanges(existing, startBound, effectiveEnd, isTradingDay);
+            List<Range> missing = computeMissingRanges(existing, effectiveStart, effectiveEnd, isTradingDay);
             List<Range> chunks = splitIntoChunks(rangesSorted(missing), monthsPerChunk, isTradingDay);
             windowCounts.put(t, chunks.size());
             for (Range r : chunks) {

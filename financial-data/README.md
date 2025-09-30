@@ -20,6 +20,7 @@ Flags
 - `-c, --chunk-months`: months per backfill chunk. Default: `6`
 - `-s, --start`: start date `yyyy-MM-dd`. Default: `1970-01-01`
 - `-e, --end`: end date `yyyy-MM-dd`. Default: today (UTC)
+- `--enable-pre-file-backfill`: allow backfilling earlier than the earliest date present in existing CSVs (default: disabled)
 
 Examples
 - Backfill a single ticker for the last 2 years in 3-month chunks:
