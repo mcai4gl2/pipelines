@@ -1,0 +1,23 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
+
+dependencies {
+    implementation project(':pipeline')
+    implementation 'io.dropwizard.metrics:metrics-core:4.2.25'
+    implementation 'info.picocli:picocli:4.7.6'
+}
+
+application {
+    mainClass = 'io.pipelines.financial.YahooFinanceCsvMain'
+}
+
+tasks.register('runYahoo', JavaExec) {
+    group = 'application'
+    description = 'Run YahooFinanceCsvMain to download CSVs'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.pipelines.financial.YahooFinanceCsvMain'
+}

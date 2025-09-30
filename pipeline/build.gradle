@@ -1,0 +1,57 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.google.protobuf' version '0.9.4'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+dependencies {
+    implementation 'com.google.inject:guice:7.0.0'
+    implementation 'io.dropwizard.metrics:metrics-core:4.2.25'
+
+    implementation 'io.grpc:grpc-stub:1.64.0'
+    implementation 'io.grpc:grpc-protobuf:1.64.0'
+    implementation 'io.grpc:grpc-netty-shaded:1.64.0'
+    implementation 'io.grpc:grpc-services:1.64.0'
+    implementation 'com.google.protobuf:protobuf-java:3.25.5'
+    implementation 'com.google.protobuf:protobuf-java-util:3.25.5'
+    compileOnly 'javax.annotation:javax.annotation-api:1.3.2'
+
+    testImplementation 'com.h2database:h2:2.2.224'
+}
+
+protobuf {
+    protoc { artifact = 'com.google.protobuf:protoc:3.25.5' }
+    plugins {
+        grpc { artifact = 'io.grpc:protoc-gen-grpc-java:1.64.0' }
+    }
+    generateProtoTasks {
+        all().each { task ->
+            task.plugins { grpc {} }
+        }
+    }
+}
+
+application {
+    // Default entrypoint; override with -PmainClass if desired
+    mainClass = (project.findProperty('mainClass') ?: 'io.pipelines.ingestor.DemoIngestorMain') as String
+}
+
+tasks.register('runDemo', JavaExec) {
+    group = 'application'
+    description = 'Run DemoIngestorMain'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.pipelines.ingestor.DemoIngestorMain'
+}
+
+tasks.register('runIngestor', JavaExec) {
+    group = 'application'
+    description = 'Run IngestorMain'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.pipelines.ingestor.IngestorMain'
+}
+

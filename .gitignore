@@ -32,3 +32,5 @@ Thumbs.db
 # Generated sources
 **/build/generated/
 
+# Financial data output
+financial-output/

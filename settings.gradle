@@ -1,2 +1,3 @@
 rootProject.name = 'pipelines'
 
+include 'pipeline', 'financial-data'

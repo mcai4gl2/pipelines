@@ -7,7 +7,7 @@ Overview
 
 Quick Start
 - Build and run the demo with resources on the classpath:
-  - `./gradlew run`
+  - `./gradlew :pipeline:run`
   - Default port: `8080` (override with `PIPELINES_PORT` or `-Dpipelines.port`)
 - Open admin pages:
   - Admin UI: `http://localhost:8080/`
@@ -71,3 +71,17 @@ Testing
 Troubleshooting
 - “No admin page” on `/`: Run via `./gradlew run`, or ensure `src/main/resources` is on the run classpath in your IDE.
 - Swagger “duplicated mapping key”: Hard refresh; generator now uses fully-qualified schema names to avoid collisions.
+
+Modules
+- `pipeline`: core runtime, sources, transforms, sinks, admin (migrated from original single-module).
+- `financial-data`: placeholder for financial data components.
+
+Financial Data CSV
+- Run: `./gradlew :financial-data:runYahoo --args='-t SPY,AAPL,MSFT -o financial-output -c 6 -s 1970-01-01'`
+- Flags:
+  - `-t, --ticker`: comma-separated tickers; default `SPY,AAPL,MSFT`
+  - `-o, --out`: output directory; default `financial-output`
+  - `-c, --chunk-months`: months per chunk; default `6`
+  - `-s, --start`: start date yyyy-MM-dd; default `1970-01-01`
+  - `-e, --end`: end date yyyy-MM-dd; default today (UTC)
+- Downloads daily data via Yahoo and writes `<ticker>.csv`, chunk by chunk.
