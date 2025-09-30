@@ -40,6 +40,8 @@ public class Pipeline<I, O> implements AutoCloseable {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicInteger inflight = new java.util.concurrent.atomic.AtomicInteger(0);
+    private volatile Thread srcThread;
+    private volatile Thread sinkThread;
 
     private final Timer sourceTimer;
     private final Timer transformTimer;
@@ -100,17 +102,24 @@ public class Pipeline<I, O> implements AutoCloseable {
     public void start() {
         if (!running.compareAndSet(false, true)) return;
         // source pump
-        Thread srcThread = new Thread(this::runSource, "pipeline-source");
+        srcThread = new Thread(this::runSource, "pipeline-source");
         srcThread.start();
 
         // single sink thread to enforce ordering
-        Thread sinkThread = new Thread(this::runSink, "pipeline-sink");
+        sinkThread = new Thread(this::runSink, "pipeline-sink");
         sinkThread.start();
     }
 
     public void pause() { paused.set(true); }
     public void resume() { paused.set(false); }
-    public void stop() { running.set(false); workerPool.shutdownNow(); }
+    public void stop() {
+        running.set(false);
+        // allow source to exit cleanly and signal poison to sink
+        Thread st = srcThread; Thread kt = sinkThread;
+        if (st != null) { try { st.join(5000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); } }
+        if (kt != null) { try { kt.join(5000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); } }
+        workerPool.shutdown();
+    }
 
     public boolean isRunning() { return running.get(); }
     public boolean isPaused() { return paused.get(); }
