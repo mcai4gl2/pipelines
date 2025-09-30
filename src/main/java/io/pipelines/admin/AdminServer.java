@@ -262,31 +262,32 @@ public class AdminServer implements AutoCloseable {
                         sb.append("        content:\n");
                         sb.append("          application/json:\n");
                         sb.append("            schema:\n");
-                        sb.append("              $ref: '#/components/schemas/").append(m.getInputType().getName()).append("'\n");
+                        sb.append("              $ref: '#/components/schemas/").append(schemaName(m.getInputType())).append("'\n");
                         sb.append("      responses:\n");
                         sb.append("        '200':\n");
                         sb.append("          description: OK\n");
                         sb.append("          content:\n");
                         sb.append("            application/json:\n");
                         sb.append("              schema:\n");
-                        sb.append("                $ref: '#/components/schemas/").append(m.getOutputType().getName()).append("'\n");
+                        sb.append("                $ref: '#/components/schemas/").append(schemaName(m.getOutputType())).append("'\n");
                         // mark messages to emit schemas later
                         markMessageTypes(m, seenMsgs);
                     }
                 }
             }
             sb.append("components:\n  schemas:\n");
+            java.util.HashSet<String> emitted = new java.util.HashSet<>();
             for (Descriptors.FileDescriptor fd : files) {
                 for (Descriptors.Descriptor d : fd.getMessageTypes()) {
-                    if (seenMsgs.contains(d.getName())) emitSchema(sb, d, new java.util.HashSet<>());
+                    if (seenMsgs.contains(schemaName(d))) emitSchema(sb, d, emitted);
                 }
             }
             return sb.toString();
         }
 
         private void markMessageTypes(Descriptors.MethodDescriptor m, java.util.Set<String> seen) {
-            seen.add(m.getInputType().getName());
-            seen.add(m.getOutputType().getName());
+            seen.add(schemaName(m.getInputType()));
+            seen.add(schemaName(m.getOutputType()));
         }
 
         private java.util.List<Descriptors.FileDescriptor> fetchDescriptorsViaReflection() {
@@ -362,8 +363,9 @@ public class AdminServer implements AutoCloseable {
         }
 
         private void emitSchema(StringBuilder sb, Descriptors.Descriptor d, java.util.Set<String> emitted) {
-            if (!emitted.add(d.getName())) return;
-            sb.append("    ").append(d.getName()).append(":\n");
+            String name = schemaName(d);
+            if (!emitted.add(name)) return;
+            sb.append("    ").append(name).append(":\n");
             sb.append("      type: object\n");
             if (!d.getFields().isEmpty()) sb.append("      properties:\n");
             for (Descriptors.FieldDescriptor f : d.getFields()) {
@@ -388,18 +390,22 @@ public class AdminServer implements AutoCloseable {
                 sb.append(indent).append("items:\n");
                 sb.append(indent).append("  ");
                 if (f.getJavaType() == Descriptors.FieldDescriptor.JavaType.MESSAGE) {
-                    sb.append("$ref: '#/components/schemas/").append(f.getMessageType().getName()).append("'\n");
+                    sb.append("$ref: '#/components/schemas/").append(schemaName(f.getMessageType())).append("'\n");
                 } else {
                     appendScalar(sb, f);
                 }
                 return sb.toString();
             }
             if (f.getJavaType() == Descriptors.FieldDescriptor.JavaType.MESSAGE) {
-                sb.append(indent).append("$ref: '#/components/schemas/").append(f.getMessageType().getName()).append("'\n");
+                sb.append(indent).append("$ref: '#/components/schemas/").append(schemaName(f.getMessageType())).append("'\n");
             } else {
                 appendScalar(sb, f);
             }
             return sb.toString();
+        }
+
+        private String schemaName(Descriptors.Descriptor d) {
+            return d.getFullName().replace('.', '_');
         }
 
         private void appendScalar(StringBuilder sb, Descriptors.FieldDescriptor f) {

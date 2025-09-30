@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'com.google.protobuf' version '0.9.4'
+    id 'application'
 }
 
 java {
@@ -43,4 +44,23 @@ protobuf {
             task.plugins { grpc {} }
         }
     }
+}
+
+application {
+    // Default entrypoint; override with -PmainClass if desired
+    mainClass = (project.findProperty('mainClass') ?: 'io.pipelines.ingestor.DemoIngestorMain') as String
+}
+
+tasks.register('runDemo', JavaExec) {
+    group = 'application'
+    description = 'Run DemoIngestorMain'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.pipelines.ingestor.DemoIngestorMain'
+}
+
+tasks.register('runIngestor', JavaExec) {
+    group = 'application'
+    description = 'Run IngestorMain'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.pipelines.ingestor.IngestorMain'
 }

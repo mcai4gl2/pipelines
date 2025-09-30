@@ -5,6 +5,33 @@ Overview
 - Focus on deterministic ordering, backpressure, budgeting, metrics, and admin controls.
 - Includes gRPC admin API and HTTP bridge with a simple dashboard.
 
+Quick Start
+- Build and run the demo with resources on the classpath:
+  - `./gradlew run`
+  - Default port: `8080` (override with `PIPELINES_PORT` or `-Dpipelines.port`)
+- Open admin pages:
+  - Admin UI: `http://localhost:8080/`
+  - Swagger UI: `http://localhost:8080/swagger`
+  - OpenAPI YAML (generated via gRPC reflection): `http://localhost:8080/openapi.yaml`
+  - Status JSON: `http://localhost:8080/status`
+  - Metrics JSON: `http://localhost:8080/metrics`
+  - REST→gRPC (POST JSON): `http://localhost:8080/grpc/{Service}/{Method}`
+
+Run from IntelliJ
+- Reimport as Gradle project so `src/main/resources` is on the run classpath.
+- Use the Gradle task “run” or run `DemoIngestorMain` with the module classpath that includes resources.
+- If `/` shows “No admin page”, run via `./gradlew run` to include resources.
+
+Admin HTML pages
+- Dashboard (`/`): Status, metrics summary, sink batch metrics, route stats, queue depths, recent errors.
+- Swagger (`/swagger`): Interact with gRPC methods via the REST bridge using `/openapi.yaml`.
+- REST→gRPC bridge (unary): POST JSON to `/grpc/{Service}/{Method}` and receive JSON response.
+
+Examples
+- Get status: `curl -s -X POST http://localhost:8080/grpc/PipelineAdmin/GetStatus -H 'Content-Type: application/json' -d '{}'`
+- Get metrics: `curl -s -X POST http://localhost:8080/grpc/PipelineAdmin/GetMetrics -H 'Content-Type: application/json' -d '{}'`
+- Pause: `curl -s -X POST http://localhost:8080/grpc/PipelineAdmin/Control -H 'Content-Type: application/json' -d '{"action":"pause"}'`
+
 Key Concepts
 - Source: produces Records with seq/subSeq for deterministic order. Examples: FileBytesSource, FileChunkSource, QueueSource.
 - Transform: converts input Record to zero or more outputs while preserving seq. Examples: Identity, TransformChain, RouterTransform, HttpExternalTransform, LengthPrefixedReframerTransform.
@@ -32,7 +59,11 @@ Admin
 
 Demo
 - DemoIngestorMain wires FileBytesSource → RouterTransform(JsonFieldSelector("type")) → chain (uppercase + suffix + optional HTTP) OR publish to QueueSource; second pipeline consumes QueueSource.
+ - Queue depth gauge registered as `queuesource.demo.queue.depth` and rendered in the UI.
 
 Testing
 - JUnit5 tests cover flow, ordering, retry, batching, backpressure propagation, chunked file source, reframing transform, and JDBC batch sink.
 
+Troubleshooting
+- “No admin page” on `/`: Run via `./gradlew run`, or ensure `src/main/resources` is on the run classpath in your IDE.
+- Swagger “duplicated mapping key”: Hard refresh; generator now uses fully-qualified schema names to avoid collisions.
