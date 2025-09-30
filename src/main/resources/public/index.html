@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Pipelines Admin</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+    .card { border: 1px solid #ddd; padding: 1rem; border-radius: 8px; }
+    button { margin-right: .5rem; }
+  </style>
+  <script>
+    async function refresh() {
+      const m = await fetch('/metrics').then(r => r.json());
+      const s = await fetch('/status').then(r => r.json());
+      const e = await fetch('/errors').then(r => r.json());
+      document.getElementById('running').textContent = s.running;
+      document.getElementById('paused').textContent = s.paused;
+      document.getElementById('queueSize').textContent = (s.queueSize ?? '-');
+      document.getElementById('timedFlushes').textContent = s.timedFlushes ?? '-';
+      document.getElementById('sourceCount').textContent = m.sourceCount;
+      document.getElementById('transformCount').textContent = m.transformCount;
+      document.getElementById('sinkCount').textContent = m.sinkCount;
+      document.getElementById('sourceMeanMs').textContent = m.sourceMeanMs;
+      document.getElementById('transformMeanMs').textContent = m.transformMeanMs;
+      document.getElementById('sinkMeanMs').textContent = m.sinkMeanMs;
+      document.getElementById('sourcePct').textContent = m.sourcePct.toFixed(2) + '%';
+      document.getElementById('transformPct').textContent = m.transformPct.toFixed(2) + '%';
+      document.getElementById('sinkPct').textContent = m.sinkPct.toFixed(2) + '%';
+      document.getElementById('sinkBatchFlushes').textContent = m.sinkBatchFlushes;
+      document.getElementById('sinkBatchAvgSize').textContent = m.sinkBatchAvgSize.toFixed(2);
+      document.getElementById('sinkBatchFlushP50Ms').textContent = m.sinkBatchFlushP50Ms.toFixed(2);
+      document.getElementById('sinkBatchFlushP95Ms').textContent = m.sinkBatchFlushP95Ms.toFixed(2);
+      document.getElementById('sinkBatchFlushP99Ms').textContent = m.sinkBatchFlushP99Ms.toFixed(2);
+      document.getElementById('sinkBatchSizeP50').textContent = m.sinkBatchSizeP50.toFixed(2);
+      document.getElementById('sinkBatchSizeP95').textContent = m.sinkBatchSizeP95.toFixed(2);
+      document.getElementById('sinkBatchSizeP99').textContent = m.sinkBatchSizeP99.toFixed(2);
+      // route stats
+      const tbody = document.getElementById('routeStatsBody');
+      if (tbody) {
+        tbody.innerHTML = '';
+        if (m.routeStats) {
+          for (const rs of m.routeStats) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${rs.key}</td>`+
+                           `<td>${rs.transform}</td>`+
+                           `<td>${rs.queue}</td>`+
+                           `<td>${rs.drop}</td>`+
+                           `<td>${Number(rs.transformRate1m||0).toFixed(2)}</td>`+
+                           `<td>${Number(rs.queueRate1m||0).toFixed(2)}</td>`+
+                           `<td>${Number(rs.dropRate1m||0).toFixed(2)}</td>`;
+            tbody.appendChild(tr);
+          }
+        }
+      }
+      // queue depths
+      const qdbody = document.getElementById('queueDepthsBody');
+      if (qdbody) {
+        qdbody.innerHTML = '';
+        if (m.queueDepths) {
+          for (const qd of m.queueDepths) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${qd.name}</td><td>${qd.depth}</td>`;
+            qdbody.appendChild(tr);
+          }
+        }
+      }
+    }
+    async function control(action) {
+      await fetch('/control?action=' + action, { method: 'POST' });
+      await refresh();
+    }
+    setInterval(refresh, 1000);
+    window.onload = refresh;
+  </script>
+</head>
+<body>
+  <h1>Pipelines Admin</h1>
+  <div>
+    <button onclick="control('pause')">Pause</button>
+    <button onclick="control('resume')">Resume</button>
+    <button onclick="control('stop')">Stop</button>
+  </div>
+  <h2>Status</h2>
+  <div class="stats">
+    <div class="card">Running: <span id="running">-</span></div>
+    <div class="card">Paused: <span id="paused">-</span></div>
+    <div class="card">Queue Size: <span id="queueSize">-</span></div>
+    <div class="card">Timed Flushes: <span id="timedFlushes">-</span></div>
+  </div>
+  <h2>Metrics</h2>
+  <div class="stats">
+    <div class="card">Source Count: <span id="sourceCount">-</span></div>
+    <div class="card">Transform Count: <span id="transformCount">-</span></div>
+    <div class="card">Sink Count: <span id="sinkCount">-</span></div>
+    <div class="card">Source Mean (ms): <span id="sourceMeanMs">-</span></div>
+    <div class="card">Transform Mean (ms): <span id="transformMeanMs">-</span></div>
+    <div class="card">Sink Mean (ms): <span id="sinkMeanMs">-</span></div>
+    <div class="card">Source %: <span id="sourcePct">-</span></div>
+    <div class="card">Transform %: <span id="transformPct">-</span></div>
+    <div class="card">Sink %: <span id="sinkPct">-</span></div>
+    <div class="card">Sink Batch Flushes: <span id="sinkBatchFlushes">-</span></div>
+    <div class="card">Sink Batch Avg Size: <span id="sinkBatchAvgSize">-</span></div>
+    <div class="card">Flush p50 (ms): <span id="sinkBatchFlushP50Ms">-</span></div>
+    <div class="card">Flush p95 (ms): <span id="sinkBatchFlushP95Ms">-</span></div>
+    <div class="card">Flush p99 (ms): <span id="sinkBatchFlushP99Ms">-</span></div>
+    <div class="card">Size p50: <span id="sinkBatchSizeP50">-</span></div>
+    <div class="card">Size p95: <span id="sinkBatchSizeP95">-</span></div>
+    <div class="card">Size p99: <span id="sinkBatchSizeP99">-</span></div>
+  </div>
+  <h2>Route Stats</h2>
+  <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; width:100%">
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Transform Count</th>
+        <th>Queue Count</th>
+        <th>Drop Count</th>
+        <th>Transform rate (1m)</th>
+        <th>Queue rate (1m)</th>
+        <th>Drop rate (1m)</th>
+      </tr>
+    </thead>
+    <tbody id="routeStatsBody"></tbody>
+  </table>
+  <h2>Queue Depths</h2>
+  <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; width:100%">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Depth</th>
+      </tr>
+    </thead>
+    <tbody id="queueDepthsBody"></tbody>
+  </table>
+  <h2>Route Stats</h2>
+  <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; width:100%">
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Transform Count</th>
+        <th>Queue Count</th>
+        <th>Drop Count</th>
+        <th>Transform rate (1m)</th>
+        <th>Queue rate (1m)</th>
+        <th>Drop rate (1m)</th>
+      </tr>
+    </thead>
+    <tbody id="routeStatsBody"></tbody>
+  </table>
+
+  <h2>Recent Errors</h2>
+  <pre id="errors" style="background:#f7f7f7;padding:1rem;border-radius:8px;max-height:200px;overflow:auto"></pre>
+  <script>
+    async function refreshErrors() {
+      const e = await fetch('/errors').then(r => r.json());
+      document.getElementById('errors').textContent = JSON.stringify(e, null, 2);
+    }
+    setInterval(refreshErrors, 2000);
+    window.onload = () => { refresh(); refreshErrors(); };
+  </script>
+  <p><a href="/openapi.yaml" target="_blank">OpenAPI (YAML)</a></p>
+</body>
+</html>

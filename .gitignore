@@ -1,0 +1,34 @@
+# Build artifacts
+build/
+out/
+target/
+.gradle/
+
+# IDE files
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Java
+*.class
+
+# Local env
+.env
+.envrc
+
+# Generated sources
+**/build/generated/
+

@@ -1,0 +1,70 @@
+syntax = "proto3";
+package io.pipelines.grpc;
+
+option java_multiple_files = true;
+option java_package = "io.pipelines.grpc";
+option java_outer_classname = "PipelinesProto";
+
+message Empty {}
+
+message Status {
+  bool running = 1;
+  bool paused = 2;
+  int32 queueSize = 3;
+  uint64 timedFlushes = 4;
+}
+
+message MetricsSummary {
+  uint64 sourceCount = 1;
+  uint64 transformCount = 2;
+  uint64 sinkCount = 3;
+  double sourceMeanMs = 4;
+  double transformMeanMs = 5;
+  double sinkMeanMs = 6;
+  double sourcePct = 7;
+  double transformPct = 8;
+  double sinkPct = 9;
+  uint64 sinkBatchFlushes = 10;
+  double sinkBatchAvgSize = 11;
+  double sinkBatchFlushP50Ms = 12;
+  double sinkBatchFlushP95Ms = 13;
+  double sinkBatchFlushP99Ms = 14;
+  double sinkBatchSizeP50 = 15;
+  double sinkBatchSizeP95 = 16;
+  double sinkBatchSizeP99 = 17;
+  repeated RouteStat routeStats = 18;
+  repeated QueueDepth queueDepths = 19;
+}
+
+message RouteStat {
+  string key = 1;
+  uint64 routedToTransform = 2;
+  uint64 routedToQueue = 3;
+  uint64 dropped = 4;
+  double transformRate1m = 5;
+  double queueRate1m = 6;
+  double dropRate1m = 7;
+}
+
+message QueueDepth {
+  string name = 1;
+  int32 depth = 2;
+}
+
+message ControlRequest { string action = 1; }
+message ControlResponse {}
+
+service PipelineAdmin {
+  rpc GetStatus(Empty) returns (Status);
+  rpc GetMetrics(Empty) returns (MetricsSummary);
+  rpc Control(ControlRequest) returns (ControlResponse);
+  rpc GetErrors(ErrorsRequest) returns (Errors);
+  rpc Health(Empty) returns (HealthStatus);
+}
+
+message ErrorsRequest { int32 limit = 1; }
+message Errors {
+  repeated string transform = 1;
+  repeated string sink = 2;
+}
+message HealthStatus { bool ready = 1; bool running = 2; }
