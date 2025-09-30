@@ -18,6 +18,7 @@ public class SimpleBudgetManager implements Budget {
     private long lastIoRefillNanos;
     private long qpsTokens;
     private long lastQpsRefillNanos;
+    private final AsyncQpsLimiter asyncLimiter;
 
     public SimpleBudgetManager(int cpuThreads, long memoryBytes, long ioBytesPerSec, long externalQps, Clock clock) {
         this.cpu = new Semaphore(Math.max(0, cpuThreads));
@@ -32,6 +33,7 @@ public class SimpleBudgetManager implements Budget {
         this.lastQpsRefillNanos = now;
         this.ioTokens = this.ioBytesPerSec; // initial burst of 1s
         this.qpsTokens = this.externalQps; // initial burst of 1s
+        this.asyncLimiter = (this.externalQps > 0) ? new AsyncQpsLimiter(this.externalQps) : null;
     }
 
     @Override
@@ -80,12 +82,18 @@ public class SimpleBudgetManager implements Budget {
     @Override
     public synchronized void acquireExternalOp() throws InterruptedException {
         if (externalQps <= 0) return; // no limit
+        if (asyncLimiter != null) {
+            try {
+                asyncLimiter.acquire().toCompletableFuture().get();
+                return;
+            } catch (java.util.concurrent.ExecutionException e) {
+                // ignore
+            }
+        }
+        // fallback to token-bucket (kept for compatibility)
         while (true) {
             refillQps();
-            if (qpsTokens > 0) {
-                qpsTokens--;
-                return;
-            }
+            if (qpsTokens > 0) { qpsTokens--; return; }
             Thread.sleep(1);
         }
     }
@@ -111,5 +119,15 @@ public class SimpleBudgetManager implements Budget {
             lastQpsRefillNanos = now;
         }
     }
-}
 
+    @Override
+    public java.util.concurrent.CompletionStage<Void> acquireExternalOpAsync() {
+        if (externalQps <= 0) return java.util.concurrent.CompletableFuture.completedFuture(null);
+        if (asyncLimiter != null) return asyncLimiter.acquire();
+        // fallback to blocking path scheduled asynchronously
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            try { acquireExternalOp(); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+            return null;
+        });
+    }
+}

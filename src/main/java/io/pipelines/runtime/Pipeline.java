@@ -7,6 +7,7 @@ import io.pipelines.core.Record;
 import io.pipelines.core.Sink;
 import io.pipelines.core.Source;
 import io.pipelines.core.Transform;
+import io.pipelines.core.AsyncTransform;
 import io.pipelines.metrics.Metrics;
 import io.pipelines.error.DeadLetterSink;
 import io.pipelines.retry.RetryPolicy;
@@ -24,6 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class Pipeline<I, O> implements AutoCloseable {
     private final Source<I> source;
     private final Transform<I, O> transform;
+    private final AsyncTransform<I, O> asyncTransform; // optional
     private final Sink<O> sink;
     private final Budget budget;
     private final RetryPolicy retryPolicy;
@@ -71,6 +73,7 @@ public class Pipeline<I, O> implements AutoCloseable {
                     int maxInFlight) {
         this.source = Objects.requireNonNull(source);
         this.transform = Objects.requireNonNull(transform);
+        this.asyncTransform = (transform instanceof AsyncTransform) ? (AsyncTransform<I,O>) transform : null;
         this.sink = Objects.requireNonNull(sink);
         this.budget = Objects.requireNonNull(budget);
         this.retryPolicy = Objects.requireNonNull(retryPolicy);
@@ -139,7 +142,12 @@ public class Pipeline<I, O> implements AutoCloseable {
             Record<I> in = opt.get();
             inflight.incrementAndGet();
             // apply transform with retries on worker threads that will also respect budgets
-            workerPool.submit(() -> process(in));
+            if (asyncTransform != null) {
+                inflight.incrementAndGet(); // already incremented above; keep symmetry for async path
+                processAsync(in, 1);
+            } else {
+                workerPool.submit(() -> process(in));
+            }
         }
         // wait for all submitted work to complete, then signal end
         while (inflight.get() > 0) { sleepQuiet(5); }
@@ -186,6 +194,39 @@ public class Pipeline<I, O> implements AutoCloseable {
         } finally {
             budget.releaseCpu();
             inflight.decrementAndGet();
+        }
+    }
+
+    private void processAsync(Record<I> in, int attempt) {
+        long t0 = System.nanoTime();
+        try (Timer.Context ignored = transformTimer.time()) {
+            asyncTransform.applyAsync(in).whenComplete((outputs, ex) -> {
+                try {
+                    if (ex != null) {
+                        if (retryPolicy.shouldRetry(attempt, ex instanceof Exception ? (Exception) ex : new Exception(ex))) {
+                            errorMeter.mark();
+                            long backoff = retryPolicy.backoffMillis(attempt);
+                            workerPool.submit(() -> {
+                                sleepQuiet(backoff);
+                                processAsync(in, attempt + 1);
+                            });
+                        } else {
+                            errorMeter.mark();
+                            if (dlqIn != null && ex instanceof Exception) dlqIn.acceptFailure("transform", in, (Exception) ex);
+                        }
+                        return;
+                    }
+                    List<Record<O>> outs = (outputs == null) ? List.of() : outputs;
+                    outs = new ArrayList<>(outs);
+                    outs.sort(java.util.Comparator.comparingInt(Record::subSeq));
+                    try { queue.put(Batch.of(in.seq(), outs)); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                } catch (Exception e2) {
+                    errorMeter.mark();
+                } finally {
+                    transformNanos.add(System.nanoTime() - t0);
+                    inflight.decrementAndGet();
+                }
+            });
         }
     }
 

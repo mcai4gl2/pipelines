@@ -37,6 +37,8 @@ Key Concepts
 - Transform: converts input Record to zero or more outputs while preserving seq. Examples: Identity, TransformChain, RouterTransform, HttpExternalTransform, LengthPrefixedReframerTransform.
 - Sink: consumes records (supports batching via BatchSink). Examples: FileBytesSink, JdbcBytesBatchSink (example).
 - Budget: SimpleBudgetManager controls CPU, memory, IO, external QPS.
+  - External QPS supports non-blocking acquire via `Budget.acquireExternalOpAsync()` used by async transforms (no thread blocking).
+  - Per-route QPS: For demo route `alpha`, set `PIPELINES_ROUTE_QPS_ALPHA` (or `-Dpipelines.route.qps.alpha`) to override route-specific QPS; grants are counted in metric `pipeline.route.alpha.qps.grants`.
 - Admin: gRPC service for status/metrics/control, HTTP bridge for web UI.
 
 Backpressure Tuning
@@ -59,7 +61,9 @@ Admin
 
 Demo
 - DemoIngestorMain wires FileBytesSource → RouterTransform(JsonFieldSelector("type")) → chain (uppercase + suffix + optional HTTP) OR publish to QueueSource; second pipeline consumes QueueSource.
- - Queue depth gauge registered as `queuesource.demo.queue.depth` and rendered in the UI.
+- If `PIPELINES_EXT_URL` is set, the chain uses an ASYNC HTTP transform (non-blocking) and leverages `Budget.acquireExternalOpAsync()` for QPS limiting (no blocked threads).
+- Queue depth gauge registered as `queuesource.demo.queue.depth` and rendered in the UI.
+ - Outbound HTTP uses an isolated async IO pool; tune threads via `-Dpipelines.iohttp=<n>` (default 8).
 
 Testing
 - JUnit5 tests cover flow, ordering, retry, batching, backpressure propagation, chunked file source, reframing transform, and JDBC batch sink.

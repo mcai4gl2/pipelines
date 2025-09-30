@@ -18,7 +18,11 @@ public interface Budget extends AutoCloseable {
     /** Block as needed to respect external QPS budget (one op). */
     void acquireExternalOp() throws InterruptedException;
 
+    /** Non-blocking acquire for external QPS budget (one op). Default: immediate. */
+    default java.util.concurrent.CompletionStage<Void> acquireExternalOpAsync() {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
+
     @Override
     default void close() {}
 }
-

@@ -10,10 +10,10 @@ import java.util.List;
  * Sequentially applies multiple transforms, flattening outputs. The final outputs are reindexed with deterministic subSeq.
  */
 public class TransformChain<I, O> implements Transform<I, O> {
-    private final List<Transform<?, ?>> stages;
+    private final List<Object> stages; // accept Transform and/or AsyncTransform instances
 
     @SafeVarargs
-    public TransformChain(Transform<?, ?>... stages) {
+    public TransformChain(Object... stages) {
         this.stages = List.of(stages);
     }
 
@@ -21,10 +21,21 @@ public class TransformChain<I, O> implements Transform<I, O> {
     @Override
     public List<Record<O>> apply(Record<I> input) throws Exception {
         List<Record<?>> current = List.of(input);
-        for (Transform stage : stages) {
+        for (Object stage : stages) {
             List<Record<?>> next = new ArrayList<>();
             for (Record<?> r : current) {
-                List out = stage.apply((Record) r);
+                List out;
+                if (stage instanceof Transform<?,?> t) {
+                    out = t.apply((Record) r);
+                } else if (stage instanceof io.pipelines.core.AsyncTransform<?,?> at) {
+                    try {
+                        out = (List) at.applyAsync((Record) r).toCompletableFuture().get();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                } else {
+                    throw new IllegalArgumentException("Unsupported stage type: " + stage.getClass());
+                }
                 if (out != null) next.addAll(out);
             }
             current = next;
@@ -38,4 +49,3 @@ public class TransformChain<I, O> implements Transform<I, O> {
         return result;
     }
 }
-

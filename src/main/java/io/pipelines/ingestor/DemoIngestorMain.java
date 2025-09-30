@@ -16,6 +16,7 @@ import io.pipelines.sink.FileBytesSink;
 import io.pipelines.source.FileBytesSource;
 import io.pipelines.source.QueueSource;
 import io.pipelines.transform.HttpExternalTransform;
+import io.pipelines.transform.HttpExternalTransformAsync;
 import io.pipelines.transform.RouterTransform;
 import io.pipelines.transform.Selector;
 import io.pipelines.transform.TransformChain;
@@ -44,8 +45,18 @@ public class DemoIngestorMain {
         String ext = System.getenv("PIPELINES_EXT_URL");
         TransformChain<byte[], byte[]> chain;
         if (ext != null && !ext.isBlank()) {
-            var http = new HttpExternalTransform(URI.create(ext), budget, Duration.ofSeconds(5));
-            chain = new TransformChain<>(toUpper, addSuffix, http);
+            // Use async HTTP transform + async QPS limiter so we don't block threads
+            // Optional per-route QPS override via env: PIPELINES_ROUTE_QPS_ALPHA
+            long routeQps = Long.parseLong(System.getProperty("pipelines.route.qps.alpha",
+                    System.getenv().getOrDefault("PIPELINES_ROUTE_QPS_ALPHA", "0")));
+            HttpExternalTransformAsync httpAsync;
+            if (routeQps > 0) {
+                var limiter = new io.pipelines.budget.AsyncQpsLimiter(routeQps);
+                httpAsync = new HttpExternalTransformAsync(URI.create(ext), Duration.ofSeconds(5), limiter, registry, "pipeline.route.alpha.qps.grants");
+            } else {
+                httpAsync = new HttpExternalTransformAsync(URI.create(ext), Duration.ofSeconds(5), budget);
+            }
+            chain = new TransformChain<>(toUpper, addSuffix, httpAsync);
         } else {
             chain = new TransformChain<>(toUpper, addSuffix);
         }

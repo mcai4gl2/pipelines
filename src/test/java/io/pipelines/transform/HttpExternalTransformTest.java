@@ -43,6 +43,17 @@ public class HttpExternalTransformTest {
         assertEquals("hello", new String(out.get(0).payload(), StandardCharsets.UTF_8));
     }
 
+    @Test
+    void async_posts_and_returns_response_without_blocking() throws Exception {
+        int port = server.getAddress().getPort();
+        var limiter = new io.pipelines.budget.AsyncQpsLimiter(1000);
+        var t = new HttpExternalTransformAsync(new URI("http://127.0.0.1:" + port + "/echo"), Duration.ofSeconds(2), limiter);
+        var fut = t.applyAsync(new Record<>(2, 0, "hi".getBytes(StandardCharsets.UTF_8)));
+        List<Record<byte[]>> out = fut.toCompletableFuture().get();
+        assertEquals(1, out.size());
+        assertEquals("hi", new String(out.get(0).payload(), StandardCharsets.UTF_8));
+    }
+
     static class EchoHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -56,4 +67,3 @@ public class HttpExternalTransformTest {
         }
     }
 }
-

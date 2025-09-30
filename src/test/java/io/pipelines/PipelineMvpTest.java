@@ -211,4 +211,43 @@ public class PipelineMvpTest {
         assertTrue(fileCount >= 4, "expected at least 4 output files");
     }
 
+    @Test
+    void async_transform_does_not_block_and_emits() throws Exception {
+        Path in = Files.createTempDirectory("pipelines-in-async");
+        Path out = Files.createTempDirectory("pipelines-out-async");
+        Files.writeString(in.resolve("a.txt"), "A");
+
+        var source = new FileBytesSource(in);
+        var sink = new FileBytesSink(out);
+        var retry = new ExponentialBackoffRetryPolicy(2, 1, 10);
+        var budget = new SimpleBudgetManager(4, 1024 * 1024, 0, 0, null);
+
+        // async transform that defers via CompletableFuture
+        io.pipelines.core.AsyncTransform<byte[], byte[]> async = (r) -> java.util.concurrent.CompletableFuture.supplyAsync(() -> java.util.List.of(new Record<>(r.seq(), 0, r.payload())));
+        // Wrap async into a Transform reference since PipelineBuilder takes Transform; it also detects AsyncTransform
+        // Helper that implements both interfaces so Pipeline detects async mode
+        class Both implements io.pipelines.core.Transform<byte[], byte[]>, io.pipelines.core.AsyncTransform<byte[], byte[]> {
+            @Override public java.util.List<Record<byte[]>> apply(Record<byte[]> input) { throw new UnsupportedOperationException(); }
+            @Override public java.util.concurrent.CompletionStage<java.util.List<Record<byte[]>>> applyAsync(Record<byte[]> input) { return async.applyAsync(input); }
+        }
+        io.pipelines.core.Transform<byte[], byte[]> transform = new Both();
+
+        pipeline = new PipelineBuilder<byte[], byte[]>()
+                .source(source)
+                .transform(transform)
+                .sink(sink)
+                .budget(budget)
+                .retry(retry)
+                .workers(1)
+                .queueCapacity(4)
+                .metrics(new MetricRegistry())
+                .build();
+        pipeline.start();
+
+        int tries = 0;
+        while (!source.isFinished() && tries++ < 200) { Thread.sleep(10); }
+        Thread.sleep(200);
+        assertTrue(Files.list(out).findAny().isPresent(), "outputs created by async transform");
+    }
+
 }
