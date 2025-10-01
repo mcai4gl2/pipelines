@@ -1,0 +1,95 @@
+name: Daily Price Download
+
+on:
+  schedule:
+    # Runs at 03:00 UTC daily
+    - cron: "0 3 * * *"
+  # Allow manual trigger
+  workflow_dispatch:
+
+concurrency:
+  group: price-download
+  cancel-in-progress: false
+
+permissions:
+  contents: write  # needed to push to data branch
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Prepare or checkout data branch
+        shell: bash
+        run: |
+          # Ensure we have a local tracking branch for 'data'
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch origin data:data
+          else
+            echo "No remote 'data' branch yet; will create it on first push."
+          fi
+          # Create a worktree for the data branch to keep repo clean
+          mkdir -p .git/worktrees
+          if git show-ref --verify --quiet refs/heads/data; then
+            :
+          else
+            git branch data || true
+          fi
+          rm -rf data || true
+          git worktree add -f data data || git worktree add -f --detach data && (cd data && git checkout -b data)
+          mkdir -p data
+
+      - name: Restore previous state (for incremental downloads)
+        run: |
+          echo "Previous run state available under ./data"
+
+      - name: Run price downloader
+        env:
+          PRICE_API_KEY: ${{ secrets.PRICE_API_KEY }}
+          # Add other secrets or config as needed
+        run: |
+          # Replace the Gradle task/args below with your actual entrypoint.
+          # Common patterns:
+          #   ./gradlew --no-daemon :app:run --args="--out ./data --since last"
+          #   ./gradlew --no-daemon downloadPrices --args="--out ./data"
+          ./gradlew --no-daemon downloadPrices --stacktrace || ./gradlew --no-daemon :app:run --args="--out ./data" --stacktrace
+
+      - name: Commit and push updated data
+        shell: bash
+        run: |
+          cd data
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            dt=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+            git commit -m "price data update ${dt}"
+            # Ensure branch exists at origin; create if missing
+            git push origin HEAD:data
+          fi
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: price-data-${{ github.run_id }}
+          path: data
+          retention-days: 30
+
