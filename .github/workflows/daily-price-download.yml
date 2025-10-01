@@ -40,22 +40,27 @@ jobs:
       - name: Prepare or checkout data branch
         shell: bash
         run: |
-          # Ensure we have a local tracking branch for 'data'
+          set -euo pipefail
+          # Detect if remote data branch exists
           if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
-            git fetch origin data:data
+            echo "Remote 'data' branch exists. Fetching..."
+            git fetch --no-tags origin data:data
+            has_remote=1
           else
             echo "No remote 'data' branch yet; will create it on first push."
+            has_remote=0
           fi
-          # Create a worktree for the data branch to keep repo clean
-          mkdir -p .git/worktrees
-          if git show-ref --verify --quiet refs/heads/data; then
-            :
-          else
-            git branch data || true
-          fi
+
+          # Clean any stale worktree dir
           rm -rf data || true
-          git worktree add -f data data || git worktree add -f --detach data && (cd data && git checkout -b data)
-          mkdir -p data
+
+          if [ "$has_remote" -eq 1 ]; then
+            # Use existing local branch tracking remote
+            git worktree add -f data data
+          else
+            # Create an orphan worktree for brand new branch; first commit will create the branch
+            git worktree add -f --orphan data data
+          fi
 
       - name: Restore previous state (for incremental downloads)
         run: |
@@ -92,4 +97,3 @@ jobs:
           name: price-data-${{ github.run_id }}
           path: data
           retention-days: 30
-
